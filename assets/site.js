@@ -198,6 +198,235 @@
     document.body.appendChild(counterScript);
   }
 
+  const newsTimeline = document.querySelector(
+  'section[aria-labelledby="news-title"] .timeline'
+);
+
+if (newsTimeline) {
+  const newsLimit = 8;
+
+  function loadHtmlPage(path) {
+    return fetch(path, { cache: "no-store" })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Unable to load " + path);
+        }
+        return response.text();
+      })
+      .then(function (html) {
+        return new DOMParser().parseFromString(html, "text/html");
+      });
+  }
+
+  function getLanguageText(element, language) {
+    if (!element) return "";
+
+    const target = element.querySelector(
+      '[data-lang="' + language + '"]'
+    );
+
+    return target ? target.textContent.trim() : "";
+  }
+
+  function getAchievementResult(element, language) {
+    if (!element) return "";
+
+    const target = Array.from(element.children).find(function (child) {
+      return (
+        child.dataset.lang === language &&
+        !child.classList.contains("student-congrats")
+      );
+    });
+
+    return target ? target.textContent.trim() : "";
+  }
+
+  function appendPaperMessage(paragraph, language, item) {
+    const content = document.createElement("span");
+    content.dataset.lang = language;
+
+    content.appendChild(
+      document.createTextNode(language === "zh" ? "论文 " : "Our paper ")
+    );
+
+    const title = document.createElement("strong");
+    title.textContent = item.shortTitle;
+    content.appendChild(title);
+
+    content.appendChild(
+      document.createTextNode(
+        language === "zh"
+          ? " 发表于 " + item.venue + "。"
+          : " was published in " + item.venue + "."
+      )
+    );
+
+    paragraph.appendChild(content);
+  }
+
+  function appendCompetitionMessage(paragraph, language, item) {
+    const content = document.createElement("span");
+    content.dataset.lang = language;
+
+    content.appendChild(
+      document.createTextNode(
+        language === "zh"
+          ? "指导学生参加 "
+          : "Students participated in "
+      )
+    );
+
+    const title = document.createElement("strong");
+    title.textContent =
+      language === "zh" ? item.zhTitle : item.enTitle;
+    content.appendChild(title);
+
+    const result =
+      language === "zh" ? item.zhResult : item.enResult;
+
+    if (result) {
+      content.appendChild(
+        document.createTextNode(
+          language === "zh" ? "：" + result : ": " + result
+        )
+      );
+    }
+
+    paragraph.appendChild(content);
+  }
+
+  function renderNews(items) {
+    if (!items.length) return;
+
+    newsTimeline.replaceChildren();
+
+    items.slice(0, newsLimit).forEach(function (item) {
+      const listItem = document.createElement("li");
+
+      const time = document.createElement("time");
+      time.dateTime = String(item.year);
+      time.textContent = String(item.year);
+
+      const paragraph = document.createElement("p");
+
+      if (item.type === "paper") {
+        appendPaperMessage(paragraph, "zh", item);
+        appendPaperMessage(paragraph, "en", item);
+      } else {
+        appendCompetitionMessage(paragraph, "zh", item);
+        appendCompetitionMessage(paragraph, "en", item);
+      }
+
+      listItem.appendChild(time);
+      listItem.appendChild(paragraph);
+      newsTimeline.appendChild(listItem);
+    });
+  }
+
+  Promise.all([
+    loadHtmlPage("./publications.html"),
+    loadHtmlPage("./students.html")
+  ])
+    .then(function (documents) {
+      const publicationsDocument = documents[0];
+      const studentsDocument = documents[1];
+
+      const publicationNews = Array.from(
+        publicationsDocument.querySelectorAll(
+          ".publication-list .paper-card"
+        )
+      )
+        .map(function (paper, index) {
+          const fullTitle =
+            paper.querySelector(".paper-title")?.textContent.trim() || "";
+
+          const venue =
+            paper.querySelector(".paper-venue")?.textContent.trim() || "";
+
+          const year = Number(paper.dataset.paperYear);
+
+          if (!fullTitle || !venue || !year) return null;
+
+          return {
+            type: "paper",
+            typeOrder: 0,
+            order: index,
+            year: year,
+            shortTitle: fullTitle.includes(":")
+              ? fullTitle.split(":")[0].trim()
+              : fullTitle,
+            venue: venue
+          };
+        })
+        .filter(Boolean);
+
+      const competitionNews = [];
+
+      studentsDocument
+        .querySelectorAll(".year-block")
+        .forEach(function (yearBlock) {
+          const heading = yearBlock.querySelector("h3");
+          const yearMatch = heading?.textContent.match(/20\d{2}/);
+
+          if (!yearMatch) return;
+
+          const year = Number(yearMatch[0]);
+
+          yearBlock
+            .querySelectorAll(".achievement-list > li")
+            .forEach(function (achievement, index) {
+              const titleElement =
+                achievement.querySelector("strong");
+
+              const detailElement =
+                achievement.querySelector(".achievement-detail");
+
+              const zhTitle =
+                getLanguageText(titleElement, "zh") ||
+                titleElement?.textContent.trim() ||
+                "";
+
+              const enTitle =
+                getLanguageText(titleElement, "en") || zhTitle;
+
+              if (!zhTitle) return;
+
+              competitionNews.push({
+                type: "competition",
+                typeOrder: 1,
+                order: index,
+                year: year,
+                zhTitle: zhTitle,
+                enTitle: enTitle,
+                zhResult: getAchievementResult(
+                  detailElement,
+                  "zh"
+                ),
+                enResult: getAchievementResult(
+                  detailElement,
+                  "en"
+                )
+              });
+            });
+        });
+
+      const allNews = publicationNews
+        .concat(competitionNews)
+        .sort(function (first, second) {
+          return (
+            second.year - first.year ||
+            first.typeOrder - second.typeOrder ||
+            first.order - second.order
+          );
+        });
+
+      renderNews(allNews);
+    })
+    .catch(function () {
+      // 自动读取失败时，继续显示 index.html 中原来的近期消息。
+    });
+}
+  
   const filterButtons = document.querySelectorAll("[data-publication-filter]");
   const papers = document.querySelectorAll("[data-paper-year]");
   filterButtons.forEach(function (button) {
