@@ -1,4 +1,4 @@
-# Jiesheng Wu personal homepage
+# Jiesheng Wu personal homepage (吴杰胜个人主页）
 
 This is a static, bilingual academic homepage designed for GitHub Pages.
 
